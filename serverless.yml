@@ -1,0 +1,113 @@
+frameworkVersion: '3'
+org: guerreiroleonardo
+app: notifications-api-nestjs
+service: notifications-api-nestjs
+useDotenv: true
+plugins:
+  - serverless-plugin-optimize
+  - serverless-offline
+  - serverless-dynamodb
+  - serverless-dotenv-plugin
+  - serverless-domain-manager
+
+functions:
+  app:
+    handler: dist/main.handler
+    events:
+      - http:
+          method: any
+          path: /{any+}
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  apiGateway:
+    shouldStartNameWithService: true
+  stage: ${opt:stage, 'local'}
+  environment:
+    APP_PORT: { env:APP_PORT }
+    ENVIRONMENT: { env:ENVIRONMENT }
+    DEFAULT_ACCESS_KEY: { env:DEFAULT_ACCESS_KEY }
+    DEFAULT_SECRET: { env:DEFAULT_SECRET } #${param:DEFAULT_SECRET}
+    MY_AWS_REGION: { env:MY_AWS_REGION }
+    NOTIFICATIONS_TABLE: '${self:custom.tableNotifications}'
+    COMPANIES_TABLE: '${self:custom.tableCompanies}'
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+    NODE_OPTIONS: --enable-source-maps --stack-trace-limit=1000
+  iam:
+    role:
+      statements:
+        - Effect: 'Allow'
+          Action:
+            - 'dynamodb:DescribeTable'
+            - 'dynamodb:Query'
+            - 'dynamodb:Scan'
+            - 'dynamodb:GetItem'
+            - 'dynamodb:PutItem'
+            - 'dynamodb:UpdateItem'
+            - 'dynamodb:DeleteItem'
+
+          Resource: 'arn:aws:dynamodb:us-east-1:*:table/notifications*'
+
+custom:
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    exclude: aws-sdk
+    target: node18
+    define: 'require.resolve: undefined'
+    platform: node
+    concurrency: 10
+  tableNotifications: 'notifications-${self:provider.stage}'
+  tableCompanies: 'companies-${self:provider.stage}'
+  DeletionPolicyPerEnv:
+    local: Delete
+    local-server: Delete
+    develop: Delete
+    prod: Retain
+  dynamodb:
+    stages:
+      - local
+  stage: ${opt:stage, self:provider.stage}
+  domains:
+    develop: backend-dev.kihbot.com.br
+    prod: backend.kihbot.com.br
+  customDomain:
+    domainName: ${self:custom.domains.${self:custom.stage}}
+    basePath: 'sms' # This will be prefixed to all routes
+    stage: ${self:provider.stage}
+    createRoute53Record: true
+resources:
+  Resources:
+    NotificationTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: ${self:custom.DeletionPolicyPerEnv.${opt:stage, 'local'}}
+      Properties:
+        TableName: '${self:custom.tableNotifications}'
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    # CompaniesTable:
+    #   Type: AWS::DynamoDB::Table
+    #   DeletionPolicy: ${self:custom.DeletionPolicyPerEnv.${opt:stage, 'local'}}
+    #   Properties:
+    #     TableName: '${self:custom.tableCompanies}'
+    #     AttributeDefinitions:
+    #       - AttributeName: id
+    #         AttributeType: S
+    #     KeySchema:
+    #       - AttributeName: id
+    #         KeyType: HASH
+
+    #     ProvisionedThroughput:
+    #       ReadCapacityUnits: 1
+    #       WriteCapacityUnits: 1
